@@ -23,13 +23,13 @@
 #include "wmtetris.xpm"
 #include "wmtetris-mask.xbm"
 
-#define TEMPORAL_RESOLUTION 100000	// 100000 = 0.1 sec
+#define TEMPORAL_RESOLUTION  30000	// 100000 = 0.1 sec
 #define INITIAL_DELAY      1000000
 #define FAST_MODE_DELAY     100000
 #define DELAY_INCREMENT      10000
 
 #define BLOCK_SIZE 3
-#define BOARD_POS_X 4
+#define BOARD_POS_X 6
 #define BOARD_POS_Y 6
 #define BOARD_WIDTH 10
 #define BOARD_HEIGHT 18
@@ -51,6 +51,7 @@ int input_index = 0;
 int max_index = 0;
 int numbers[MAX_LINES];  // 数値を格納する配列
 int replay_mode = 0;
+int js_ax_num = 0;
 
 static int buttons[6][4] = {
 	{ 0,  0, 64, 64},
@@ -62,13 +63,13 @@ static int buttons[6][4] = {
 };
 
 static int initial_figures[7][4][2] = {
-	{ {0, 1}, {1, 1}, {2, 1}, {3, 1} },
-	{ {0, 1}, {1, 1}, {2, 1}, {2, 2} },
-	{ {0, 2}, {1, 2}, {2, 2}, {2, 1} },
-	{ {0, 2}, {1, 1}, {1, 2}, {2, 2} },
-	{ {0, 2}, {1, 2}, {1, 1}, {2, 1} },
-	{ {0, 1}, {1, 1}, {1, 2}, {2, 2} },
-	{ {1, 1}, {2, 1}, {1, 2}, {2, 2} }
+	{ {0, 1}, {1, 1}, {2, 1}, {3, 1} },			// I
+	{ {0, 1}, {1, 1}, {2, 1}, {2, 2} },			// L
+	{ {0, 2}, {1, 2}, {2, 2}, {2, 1} },			// J
+	{ {0, 1}, {1, 0}, {1, 1}, {2, 1} },			// T
+	{ {0, 2}, {1, 2}, {1, 1}, {2, 1} },			//
+	{ {0, 1}, {1, 1}, {1, 2}, {2, 2} },			//
+	{ {1, 1}, {2, 1}, {1, 2}, {2, 2} }			// O
 };
 
 int which_button(int x, int y);
@@ -84,6 +85,8 @@ void append_to_file(const char *filepath, const char *content);
 // グローバル変数として display を定義
 Display *display = NULL;
 
+int padX = 0;
+
 void setupJoystick() {
     js_fd = open(JOYSTICK_DEV, O_RDONLY | O_NONBLOCK);
     if (js_fd == -1) {
@@ -98,55 +101,65 @@ void processJoystickInput(int *fig_x, int *fig_y, int figure[4][2], int figure_t
 	char str[20];     // 結果を格納する文字列バッファ
 	int pad_mask = 0;
 
-	*fast_mode = 0;
     while (read(js_fd, &js, sizeof(struct js_event)) == sizeof(struct js_event)) {
         if (js.type & JS_EVENT_BUTTON) {
             // ボタンイベント処理
             if (js.value) { // ボタンが押された場合
-				// 未入力のときのみ
-				if (!(pad_mask & 3))
-					switch (js.number) {
-						case 0: // ボタン0: 左回転
-							rotate_figure(0, figure, *fig_x, *fig_y);
-							pad_mask = pad_mask | 1;
-							break;
-						case 1: // ボタン1: 右回転
-							rotate_figure(1, figure, *fig_x, *fig_y);
-							pad_mask = pad_mask | 2;
-							break;
-						case 2: // ボタン2: 高速モード
-							//*fast_mode = 1;
-							break;
-						case 3: // ボタン3: リセット高速モード
-							//*fast_mode = 0;
-							break;
-                }
+				switch (js.number) {
+					case 0: // ボタン0: 左回転
+						pad_mask = pad_mask | 1;
+						break;
+					case 1: // ボタン1: 右回転
+						pad_mask = pad_mask | 2;
+						break;
+				}
             }
         } else if (js.type & JS_EVENT_AXIS) {
-			// 未入力のときのみ
-			if (!(pad_mask & 28))
-				// 軸イベント処理
-				if (js.number == 0) { // 水平方向（軸0）
-					if (js.value < -10000) { // 左
-						if (check_figure_position(*fig_x - 1, *fig_y, figure)) {
-							(*fig_x)--;
-							pad_mask = pad_mask | 4;
-						}
-					} else if (js.value > 10000) { // 右
-						if (check_figure_position(*fig_x + 1, *fig_y, figure)) {
-							(*fig_x)++;
-							pad_mask = pad_mask | 8;
-						}
-					}
-				} else if (js.number == 1) { // 垂直方向（軸1）
-
-					if (js.value > 10000) { // 下
-						*fast_mode = 1;
-						pad_mask = pad_mask | 16;
-					}
+			// 軸イベント処理
+			if (js.number == 6 & js.value > 10000) js_ax_num = 6;	// 1回ハットスイッチ使ったら固定に
+			if (js.number == js_ax_num) { // 水平方向（軸0）
+				if (js.value < -10000) { // 左
+					padX = -1;
+				} else if (js.value > 10000) { // 右
+					padX = 1;
+				} else {
+					padX = 0;
 				}
+			} else if (js.number == 1 + js_ax_num) { // 垂直方向（軸1）
+				if (js.value > 10000) { // 左
+					*fast_mode = 1;
+				} else {
+					*fast_mode = 0;
+				}
+			}
         }
     }
+
+
+	if (pad_mask & 1) {
+		rotate_figure(0, figure, *fig_x, *fig_y);
+	}
+	if (pad_mask & 2) {
+		rotate_figure(1, figure, *fig_x, *fig_y);
+	}
+	if (padX == -1) { // 左
+		pad_mask = pad_mask | 4;
+		if (check_figure_position(*fig_x - 1, *fig_y, figure)) {
+			(*fig_x)--;
+		}
+	}
+	if (padX == 1) { // 右
+		pad_mask = pad_mask | 8;
+		if (check_figure_position(*fig_x + 1, *fig_y, figure)) {
+			(*fig_x)++;
+		}
+	}
+	if (*fast_mode) {
+		pad_mask = pad_mask | 16;
+	} else {
+		pad_mask = pad_mask & 15;
+	}
+	// Pad Save
     sprintf(str, "%d", pad_mask); append_to_file(filepath, str);
 }
 int get_number() {
@@ -163,7 +176,6 @@ void processJoystickInputFromFile(int *fig_x, int *fig_y, int figure[4][2], int 
 
 	//Next Input
 	int inp = get_number();
-	*fast_mode = 0;
 
 	// ボタンイベント処理
 	if (inp & 1) {
@@ -184,6 +196,9 @@ void processJoystickInputFromFile(int *fig_x, int *fig_y, int figure[4][2], int 
 	}
 	if (inp & 16) {
 			*fast_mode = 1;
+	} else {
+			*fast_mode = 0;
+
 	}
 }
 
@@ -289,6 +304,7 @@ int main(int argc, char *argv[]) {
 			board[x][y] = 0;
 	copyXPMArea(64, 0, 64, 64, 0, 0);
 	RedrawWindow();
+	js_ax_num = 0;
 
 	fast_mode=0;
 	if (replay_mode == 0) {
@@ -325,7 +341,7 @@ int main(int argc, char *argv[]) {
 			fig_y++;
 		} else {
 			new_figure = 1;
-			fast_mode = 0;
+			//fast_mode = 0;
 			for (i = 0; i < 4; i++) {
 				board [fig_x + figure[i][0]] [fig_y + figure[i][1]] = figure_type + 1;
 			}
@@ -375,7 +391,7 @@ int main(int argc, char *argv[]) {
 		if (new_figure) {
 			// Game Over
 			if (!check_figure_position(fig_x, fig_y, figure)) {
-				copyXPMArea(64, 64, 23, 15, 12, 24);
+				copyXPMArea(64, 64, 23, 15, 10, 24);
 				RedrawWindow();
 				while (1) {
 					if (js_fd != -1) {
@@ -486,6 +502,45 @@ int which_button(int x, int y) {
 }
 
 int rotate_figure(int direction, int figure[4][2], int fig_x, int fig_y) {
+    int i, temp[4][2];
+
+    // 回転中心を動的に計算
+    int center_x = 1; // 3×3 グリッドの中心
+    int center_y = 1; // 3×3 グリッドの中心
+
+    // 回転を計算
+    for (i = 0; i < 4; i++) {
+        // 中心からの相対座標を計算
+        int rel_x = figure[i][0] - center_x;
+        int rel_y = figure[i][1] - center_y;
+
+        // 回転後の座標を計算（時計回り or 反時計回り）
+        if (direction) { // 時計回り
+            temp[i][0] = center_x - rel_y;
+            temp[i][1] = center_y + rel_x;
+        } else { // 反時計回り
+            temp[i][0] = center_x + rel_y;
+            temp[i][1] = center_y - rel_x;
+        }
+    }
+
+    // 回転後の位置が有効かチェック
+    if (check_figure_position(fig_x, fig_y, temp)) {
+        // 有効なら座標を更新
+        for (i = 0; i < 4; i++) {
+            figure[i][0] = temp[i][0];
+            figure[i][1] = temp[i][1];
+        }
+        return 1;
+    } else {
+        // 無効なら回転をキャンセル
+        return 0;
+    }
+}
+
+
+/*
+int rotate_figure(int direction, int figure[4][2], int fig_x, int fig_y) {
 	int i, temp[4][2];
 
 	for (i = 0; i < 4; i++) {
@@ -502,6 +557,8 @@ int rotate_figure(int direction, int figure[4][2], int fig_x, int fig_y) {
 		return 0;
 	}
 }
+*/
+
 
 void draw_figure(int figure[4][2], int type, int x, int y) {
 	general_draw_figure(BOARD_POS_X, BOARD_POS_Y, figure, type, x, y);
