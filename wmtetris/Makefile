@@ -4,7 +4,7 @@ OBJS   =  wmtetris.o \
 	  ../wmgeneral/wmgeneral.o \
 
 wmtetris: $(OBJS)
-	cc -O -o wmtetris $^ $(LIBDIR) $(LIBS)
+	cc -g -O -o wmtetris $^ $(LIBDIR) $(LIBS)
 
 %.o:	%.c
 	cc -O -c -o $@ $<
