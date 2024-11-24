@@ -7,6 +7,9 @@ Linuxなら可能です。テトリスのソースコードを貰ってきて、
 JoyPadで動かせるように改造してリプレイ表示機能もつけた。
 時間は掛かったけど楽しかったな。
 
+![DotByDot](./wmtetris.png)
+
+![Learge](./wmtetrisLearge.png)
 
 
 This is a dock app for WindowMaker.
